@@ -93,16 +93,10 @@ def create_gauge_chart(value, title, range_vals=[-1, 1]):
         domain={'x': [0, 1], 'y': [0, 1]},
         gauge={
             'axis': {'range': range_vals},
-            'bar': {'color': "darkblue"},
+            'bar': {'color': "dodgerblue"},
             'steps': [
-                {'range': [range_vals[0], 0], 'color': "lightgray"},
-                {'range': [0, range_vals[1]], 'color': "gray"}
+                {'range': [range_vals[0], range_vals[1]], 'color': "lightgray"},
             ],
-            'threshold': {
-                'line': {'color': "red", 'width': 4},
-                'thickness': 0.75,
-                'value': 0
-            }
         }
     ))
     fig.update_layout(height=200, margin=dict(l=20, r=20, t=40, b=20))
@@ -111,19 +105,19 @@ def create_gauge_chart(value, title, range_vals=[-1, 1]):
 # Header
 col1, col2, col3 = st.columns([2, 3, 1])
 with col1:
-    st.title("📊 Options Position Analyzer")
+    st.title("Options Position Analyzer")
 with col3:
-    if st.button("🔄 Refresh", key="refresh"):
+    if st.button("Refresh", key="refresh"):
         st.session_state.last_update = time.time()
 
 st.markdown("---")
 
 # Sidebar - Position Builder
 with st.sidebar:
-    st.header("🏗️ Position Builder")
+    st.header("Position Builder")
     
     # Market Conditions Section
-    st.subheader("📈 Market Conditions")
+    st.subheader("Market Conditions")
     
     spot_price = st.number_input(
         "Spot Price ($)",
@@ -165,10 +159,10 @@ with st.sidebar:
     st.markdown("---")
     
     # Position Entry Section
-    st.subheader("🎯 Add Positions")
+    st.subheader("Add Positions")
     
     # Underlying shares
-    with st.expander("📊 Underlying Shares", expanded=False):
+    with st.expander("Underlying Shares", expanded=False):
         shares = st.number_input(
             "Number of Shares",
             min_value=-10000,
@@ -193,7 +187,7 @@ with st.sidebar:
                 st.rerun()
     
     # Options
-    with st.expander("📝 Options", expanded=True):
+    with st.expander("Options", expanded=True):
         col1, col2 = st.columns(2)
         
         with col1:
@@ -258,7 +252,7 @@ with st.sidebar:
     
     # Position Summary
     st.markdown("---")
-    st.subheader("📋 Current Position")
+    st.subheader("Current Position")
     
     summary = st.session_state.position.summarize_position()
     
@@ -292,14 +286,14 @@ with st.sidebar:
 
 # Main content area
 # Create tabs for different views
-tab1, tab2, tab3, tab4 = st.tabs(["📊 P&L Analysis", "📈 Greeks", "📉 Risk Scenarios", "📋 Summary"])
+tab1, tab2, tab3, tab4 = st.tabs(["P&L Analysis", "Greeks", "Risk Scenarios", "Summary"])
 
 with tab1:
     # P&L Analysis
     st.header("Profit & Loss Analysis")
     
     if not st.session_state.position.options and st.session_state.position.underlying_shares == 0:
-        st.info("👆 Add positions using the sidebar to begin analysis")
+        st.info("Add positions using the sidebar to begin analysis")
     else:
         # Calculate P&L across price range
         price_range = np.linspace(spot_price * 0.5, spot_price * 1.5, 200)
