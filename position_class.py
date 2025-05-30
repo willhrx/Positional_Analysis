@@ -139,7 +139,7 @@ class Position:
         self.options.append(option)
         if premium:
             # Negative because we pay premium to buy, receive premium to sell
-            self.initial_cost += option.position_size * 100 * premium * (-1 if option.position_size > 0 else 1)
+            self.initial_cost += option.position_size *  premium 
         
         position_type = "Long" if option.position_size > 0 else "Short"
         print(f"Added {position_type} {abs(option.position_size)} {option.option_type} @ {option.strike}")
@@ -168,7 +168,7 @@ class Position:
             option_greeks = option.calculate_greeks(market, current_date)
             # Multiply by position size and contract multiplier (100 shares per contract)
             for greek, value in option_greeks.items():
-                total_greeks[greek] += value * option.position_size * 100
+                total_greeks[greek] += value * option.position_size 
         
         return total_greeks
     
@@ -180,8 +180,8 @@ class Position:
         # Options value
         for option in self.options:
             option_price = option.calculate_price(market, current_date)
-            # Each contract represents 100 shares
-            value += option.position_size * 100 * option_price
+            # Each contract represents 1 share
+            value += option.position_size *  option_price
         
         return value
     
