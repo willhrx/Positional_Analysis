@@ -156,6 +156,52 @@ with st.sidebar:
         volatility=volatility / 100
     )
     
+    # Time to Expiration Slider
+    if st.session_state.position.options:
+        st.markdown("---")
+        st.subheader("Time Analysis")
+        
+        # Find the nearest expiration
+        current_date = datetime.now()
+        nearest_expiry = min(opt.expiry for opt in st.session_state.position.options)
+        max_days = (nearest_expiry - current_date).days
+        
+        if max_days > 0:
+            days_to_expiry = st.slider(
+                "Days to Expiration",
+                min_value=0,
+                max_value=max_days,
+                value=max_days,
+                step=1,
+                help=f"Slide to see how position changes as time passes. Current date: {current_date.strftime('%Y-%m-%d')}"
+            )
+            
+            # Calculate the analysis date
+            analysis_date = nearest_expiry - timedelta(days=days_to_expiry)
+            
+            # Store in session state for use in calculations
+            st.session_state.analysis_date = analysis_date
+            
+            # Display the analysis date
+            st.info(f"Analyzing position as of: {analysis_date.strftime('%Y-%m-%d')}")
+            
+            # Show time decay impact
+            current_value = st.session_state.position.calculate_position_value(market, current_date)
+            future_value = st.session_state.position.calculate_position_value(market, analysis_date)
+            time_decay = future_value - current_value
+            
+            col1, col2 = st.columns(2)
+            with col1:
+                st.metric("Days Remaining", days_to_expiry)
+            with col2:
+                st.metric("Time Decay Impact", format_currency(time_decay))
+        else:
+            st.warning("All options have expired")
+            st.session_state.analysis_date = current_date
+    else:
+        # No analysis date if no options
+        st.session_state.analysis_date = datetime.now()
+
     st.markdown("---")
     
     # Position Entry Section
@@ -286,7 +332,7 @@ with st.sidebar:
 
 # Main content area
 # Create tabs for different views
-tab1, tab2, tab3, tab4 = st.tabs(["P&L Analysis", "Greeks", "Risk Scenarios", "Summary"])
+tab1, tab2, tab3, tab4 = st.tabs(["P&L Analysis", "Greeks", "Time Decay Animation", "Summary"])
 
 with tab1:
     # P&L Analysis
@@ -295,9 +341,14 @@ with tab1:
     if not st.session_state.position.options and st.session_state.position.underlying_shares == 0:
         st.info("Add positions using the sidebar to begin analysis")
     else:
+        # Replace the P&L calculation section in tab1 with this updated version
+
+        # Get analysis date (use current date if not set)
+        analysis_date = st.session_state.get('analysis_date', datetime.now())
+        
         # Calculate P&L across price range
         price_range = np.linspace(spot_price * 0.5, spot_price * 1.5, 200)
-        pnls = st.session_state.position.calculate_pnl_range(price_range, market)
+        pnls = st.session_state.position.calculate_pnl_range(price_range, market, analysis_date)
         
         # Create P&L chart
         fig_pnl = go.Figure()
@@ -327,7 +378,7 @@ with tab1:
         )
         
         # Add breakeven points
-        breakevens = st.session_state.position.get_breakeven_points(market)
+        breakevens = st.session_state.position.get_breakeven_points(market, analysis_date)
         for be in breakevens:
             fig_pnl.add_vline(
                 x=be,
@@ -338,9 +389,11 @@ with tab1:
                 annotation_position="bottom"
             )
         
-        # Update layout
+        # Update layout with analysis date info
+        title_text = "Position P&L at Expiration" if days_to_expiry <= 0 else f"Position P&L with {days_to_expiry} Days to Expiration"
+        
         fig_pnl.update_layout(
-            title="Position P&L at Expiration",
+            title=title_text,
             xaxis_title="Underlying Price ($)",
             yaxis_title="Profit/Loss ($)",
             height=500,
@@ -350,13 +403,13 @@ with tab1:
         
         st.plotly_chart(fig_pnl, use_container_width=True)
         
-        # Key metrics
+        # Key metrics (update these to use analysis_date)
         col1, col2, col3, col4 = st.columns(4)
         
         # Calculate metrics
-        current_pnl = st.session_state.position.calculate_pnl(market)
-        max_pl = st.session_state.position.get_max_profit_loss(market)
-        prob_profit = st.session_state.position.calculate_probability_of_profit(market)
+        current_pnl = st.session_state.position.calculate_pnl(market, analysis_date)
+        max_pl = st.session_state.position.get_max_profit_loss(market, analysis_date)
+        prob_profit = st.session_state.position.calculate_probability_of_profit(market, analysis_date)
         
         with col1:
             st.metric(
@@ -403,8 +456,10 @@ with tab2:
     if not st.session_state.position.options and st.session_state.position.underlying_shares == 0:
         st.info("👆 Add positions to view Greeks")
     else:
-        # Calculate current Greeks
-        greeks = st.session_state.position.calculate_total_greeks(market)
+        analysis_date = st.session_state.get('analysis_date', datetime.now())
+        
+        # Calculate current Greeks at the analysis date
+        greeks = st.session_state.position.calculate_total_greeks(market, analysis_date)
         
         # Display Greeks in gauge charts
         col1, col2, col3 = st.columns(3)
@@ -413,7 +468,7 @@ with tab2:
             fig_delta = create_gauge_chart(
                 greeks['delta'],
                 "Delta",
-                [-100, 100]
+                [-1, 1]
             )
             st.plotly_chart(fig_delta, use_container_width=True)
             st.caption("Price sensitivity: $1 move = $" + f"{greeks['delta']:.2f}")
@@ -422,7 +477,7 @@ with tab2:
             fig_gamma = create_gauge_chart(
                 greeks['gamma'],
                 "Gamma",
-                [-10, 10]
+                [-0.1, 0.1]
             )
             st.plotly_chart(fig_gamma, use_container_width=True)
             st.caption("Delta change rate: " + f"{greeks['gamma']:.4f}")
@@ -431,7 +486,7 @@ with tab2:
             fig_theta = create_gauge_chart(
                 greeks['theta'],
                 "Theta (per day)",
-                [-50, 50]
+                [-0.5, 0.5]
             )
             st.plotly_chart(fig_theta, use_container_width=True)
             st.caption("Time decay: $" + f"{greeks['theta']:.2f}/day")
@@ -468,7 +523,7 @@ with tab2:
                 risk_free_rate=market.risk_free_rate,
                 volatility=market.volatility
             )
-            temp_greeks = st.session_state.position.calculate_total_greeks(temp_market)
+            temp_greeks = st.session_state.position.calculate_total_greeks(temp_market, analysis_date)
             deltas.append(temp_greeks['delta'])
             gammas.append(temp_greeks['gamma'])
         
@@ -526,88 +581,105 @@ with tab2:
         st.plotly_chart(fig_greeks, use_container_width=True)
 
 with tab3:
-    # Risk Scenarios
-    st.header("Risk Scenario Analysis")
-    
-    if not st.session_state.position.options and st.session_state.position.underlying_shares == 0:
-        st.info("👆 Add positions to view risk scenarios")
-    else:
-        # Define scenarios
-        scenarios = [
-            ("Current", 0, 0, 0),
-            ("-10% Price", -10, 0, 5),
-            ("-5% Price", -5, 0, 2),
-            ("+5% Price", 5, 0, -2),
-            ("+10% Price", 10, 0, -5),
-            ("Vol Spike (+10%)", 0, 10, 0),
-            ("Vol Crush (-10%)", 0, -10, 0),
-            ("Market Crash", -20, 20, 0),
-            ("Market Rally", 20, -10, 0)
-        ]
-        
-        # Calculate scenarios
-        scenario_results = []
-        current_value = st.session_state.position.calculate_position_value(market)
-        
-        for name, price_change, vol_change, rate_change in scenarios:
-            scenario_market = MarketConditions(
-                spot_price=spot_price * (1 + price_change/100),
-                risk_free_rate=(risk_free_rate + rate_change) / 100,
-                volatility=(volatility + vol_change) / 100
-            )
+    # Optional: Add this to create an animated time decay visualization
+# Add this as a new tab or in the P&L Analysis section
+
+    if st.checkbox("Show Time Decay Animation"):
+        if st.session_state.position.options:
+            # Create frames for animation
+            current_date = datetime.now()
+            nearest_expiry = min(opt.expiry for opt in st.session_state.position.options)
+            days_to_expiry = (nearest_expiry - current_date).days
             
-            value = st.session_state.position.calculate_position_value(scenario_market)
-            pnl = value - current_value
-            greeks = st.session_state.position.calculate_total_greeks(scenario_market)
-            
-            scenario_results.append({
-                'Scenario': name,
-                'Spot': f"${scenario_market.spot_price:.2f}",
-                'Vol': f"{scenario_market.volatility*100:.1f}%",
-                'Value': format_currency(value),
-                'P&L': format_currency(pnl),
-                'Delta': f"{greeks['delta']:.2f}",
-                'Gamma': f"{greeks['gamma']:.3f}"
-            })
-        
-        # Display scenario table
-        scenario_df = pd.DataFrame(scenario_results)
-        
-        # Style the dataframe
-        def color_negative(val):
-            if isinstance(val, str) and val.startswith('-$'):
-                return 'color: red'
-            return ''
-        
-        styled_df = scenario_df.style.applymap(color_negative, subset=['P&L'])
-        st.dataframe(styled_df, hide_index=True, use_container_width=True)
-        
-        # Scenario visualization
-        st.subheader("Scenario Impact Visualization")
-        
-        # Extract P&L values for chart
-        pnl_values = []
-        for result in scenario_results[1:]:  # Skip current scenario
-            pnl_str = result['P&L'].replace('$', '').replace(',', '')
-            pnl_values.append(float(pnl_str))
-        
-        fig_scenarios = go.Figure(data=[
-            go.Bar(
-                x=[s['Scenario'] for s in scenario_results[1:]],
-                y=pnl_values,
-                marker_color=['red' if v < 0 else 'green' for v in pnl_values]
-            )
-        ])
-        
-        fig_scenarios.update_layout(
-            title="Scenario P&L Impact",
-            xaxis_title="Scenario",
-            yaxis_title="P&L Change ($)",
-            height=400,
-            showlegend=False
-        )
-        
-        st.plotly_chart(fig_scenarios, use_container_width=True)
+            if days_to_expiry > 0:
+                # Create frames for different time points
+                time_points = np.linspace(days_to_expiry, 0, min(20, days_to_expiry))
+                
+                frames = []
+                for days in time_points:
+                    analysis_date = nearest_expiry - timedelta(days=int(days))
+                    pnls = st.session_state.position.calculate_pnl_range(price_range, market, analysis_date)
+                    
+                    frames.append(go.Frame(
+                        data=[go.Scatter(
+                            x=price_range,
+                            y=pnls,
+                            mode='lines',
+                            line=dict(color='blue', width=3)
+                        )],
+                        name=str(int(days))
+                    ))
+                
+                # Create figure with animation
+                fig_anim = go.Figure(
+                    data=[go.Scatter(
+                        x=price_range,
+                        y=frames[0].data[0].y,
+                        mode='lines',
+                        line=dict(color='blue', width=3)
+                    )],
+                    frames=frames
+                )
+                
+                # Add play/pause buttons
+                fig_anim.update_layout(
+                    updatemenus=[{
+                        'type': 'buttons',
+                        'showactive': False,
+                        'buttons': [
+                            {
+                                'label': 'Play',
+                                'method': 'animate',
+                                'args': [None, {
+                                    'frame': {'duration': 200, 'redraw': True},
+                                    'fromcurrent': True,
+                                    'transition': {'duration': 100}
+                                }]
+                            },
+                            {
+                                'label': 'Pause',
+                                'method': 'animate',
+                                'args': [[None], {
+                                    'frame': {'duration': 0, 'redraw': False},
+                                    'mode': 'immediate',
+                                    'transition': {'duration': 0}
+                                }]
+                            }
+                        ]
+                    }],
+                    sliders=[{
+                        'active': 0,
+                        'yanchor': 'top',
+                        'xanchor': 'left',
+                        'currentvalue': {
+                            'prefix': 'Days to Expiry: ',
+                            'visible': True,
+                            'xanchor': 'right'
+                        },
+                        'steps': [
+                            {
+                                'args': [[str(int(days))], {
+                                    'frame': {'duration': 200, 'redraw': True},
+                                    'mode': 'immediate',
+                                    'transition': {'duration': 100}
+                                }],
+                                'label': str(int(days)),
+                                'method': 'animate'
+                            }
+                            for days in time_points
+                        ]
+                    }],
+                    title="P&L Time Decay Animation",
+                    xaxis_title="Underlying Price ($)",
+                    yaxis_title="Profit/Loss ($)",
+                    height=600
+                )
+                
+                # Add reference lines
+                fig_anim.add_hline(y=0, line_dash="dash", line_color="gray", opacity=0.5)
+                fig_anim.add_vline(x=spot_price, line_dash="dash", line_color="red", opacity=0.5)
+                
+                st.plotly_chart(fig_anim, use_container_width=True)
 
 with tab4:
     # Position Summary
